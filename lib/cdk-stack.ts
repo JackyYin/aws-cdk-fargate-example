@@ -1,31 +1,24 @@
 import cdk = require('@aws-cdk/core');
 import ecr = require('@aws-cdk/aws-ecr');
-import ecs = require('@aws-cdk/aws-ecs');
+import {
+  Vpc,
+  Subnet,
+  SubnetType,
+  SecurityGroup
+} from '@aws-cdk/aws-ec2';
+import {
+  Cluster,
+  TaskDefinition,
+  Compatibility,
+  ContainerImage,
+  AwsLogDriver
+} from '@aws-cdk/aws-ecs';
 import ecsPatterns = require('@aws-cdk/aws-ecs-patterns');
 import * as logs from '@aws-cdk/aws-logs';
-import { Vpc, Subnet, SubnetType } from '@aws-cdk/aws-ec2';
 
 export class CdkStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
-
-    // const vpc = new Vpc(this, 'Vpc', {
-    //   cidr: '10.1.0.0/16',
-    //   maxAzs: 2,
-    //   natGateways: 1,
-    //   subnetConfiguration: [
-    //     {
-    //       cidrMask: 24,
-    //       name: 'ingress',
-    //       subnetType: SubnetType.PUBLIC
-    //     },
-    //     {
-    //       cidrMask: 24,
-    //       name: 'application',
-    //       subnetType: SubnetType.PRIVATE
-    //     }
-    //   ]
-    // })
 
     const defaultVPC = Vpc.fromLookup(this, 'DefaultVpc', {
       isDefault: true
@@ -74,12 +67,21 @@ export class CdkStack extends cdk.Stack {
       privateSubnetIds: privateSubnetCandidates
     })
 
-    const cluster = new ecs.Cluster(this, 'Cluster', {
-      vpc
+    const sg = new SecurityGroup(this, 'Sg', {
+      vpc,
+      allowAllOutbound: true
     })
 
-    const taskDef = new ecs.TaskDefinition(this, 'Task', {
-      compatibility: ecs.Compatibility.FARGATE,
+    const cluster = Cluster.fromClusterAttributes(this, 'ECSCluster', {
+      vpc,
+      securityGroups: [
+        sg
+      ],
+      clusterName: 'Partner'
+    })
+
+    const taskDef = new TaskDefinition(this, 'Task', {
+      compatibility: Compatibility.FARGATE,
       cpu: '1024',
       memoryMiB: '2048',
     })
@@ -91,8 +93,8 @@ export class CdkStack extends cdk.Stack {
     )
 
     const nginx = taskDef.addContainer('nginx', {
-      image: ecs.ContainerImage.fromEcrRepository(nginxRepo, 'latest'),
-      logging: ecs.AwsLogDriver.awsLogs({
+      image: ContainerImage.fromEcrRepository(nginxRepo, 'latest'),
+      logging: AwsLogDriver.awsLogs({
         logRetention: logs.RetentionDays.ONE_MONTH,
         streamPrefix: 'nginx'
       })
@@ -109,8 +111,8 @@ export class CdkStack extends cdk.Stack {
     )
 
     const express = taskDef.addContainer('express', {
-      image: ecs.ContainerImage.fromEcrRepository(expressRepo, 'latest'),
-      logging: ecs.AwsLogDriver.awsLogs({
+      image: ContainerImage.fromEcrRepository(expressRepo, 'latest'),
+      logging: AwsLogDriver.awsLogs({
         logRetention: logs.RetentionDays.ONE_MONTH,
         streamPrefix: 'express'
       })
